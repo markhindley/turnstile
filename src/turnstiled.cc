@@ -23,6 +23,7 @@
 #include <pwd.h>
 #include <poll.h>
 #include <fcntl.h>
+#include <dirent.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -834,6 +835,79 @@ static bool check_linger(login const &lgn) {
     return ret;
 }
 
+static bool init_linger() {
+    if (cdata->linger_never) {
+        return false;
+    }
+    auto dfd = open(LINGER_PATH, O_RDONLY);
+    if (dfd < 0) {
+        return false;
+    }
+    auto dfdup = dup(dfd);
+    if (dfdup < 0) {
+        close(dfd);
+        return false;
+    }
+    auto *dir = fdopendir(dfdup);
+    if (!dir) {
+        close(dfd);
+        return false;
+    }
+    bool queued = false;
+    for (;;) {
+        struct stat lbuf;
+        errno = 0;
+        auto *p = readdir(dir);
+        if (!p) {
+            if (errno) {
+                print_err(
+                    "turnstiled: failed to pre-linger all logins (%s)",
+                    strerror(errno)
+                );
+            }
+            break;
+        }
+        if ((p->d_name[0] == '.') && ((p->d_name[1] == '.') || !p->d_name[1])) {
+            continue;
+        }
+        switch (p->d_type) {
+            case DT_UNKNOWN:
+                /* fall back to stat */
+                if (
+                    fstatat(dfd, p->d_name, &lbuf, AT_SYMLINK_NOFOLLOW) ||
+                    !S_ISREG(lbuf.st_mode)
+                ) {
+                    continue;
+                }
+                break;
+            case DT_REG:
+                /* ok */
+                break;
+            default:
+                /* wrong type */
+                continue;
+        }
+        auto *pwd = getpwnam(p->d_name);
+        if (!pwd) {
+            continue;
+        }
+        auto *lgn = login_populate(pwd->pw_uid);
+        if (lgn) {
+            if (srv_start(*lgn)) {
+                queued = true;
+            }
+        } else {
+            print_err(
+                "turnstiled: failed to populate login for %u",
+                static_cast<unsigned int>(pwd->pw_uid)
+            );
+        }
+    }
+    close(dfd);
+    closedir(dir);
+    return queued;
+}
+
 /* terminate given conn, but only if within login */
 static bool conn_term_login(login &lgn, int conn) {
     for (auto cit = lgn.sessions.begin(); cit != lgn.sessions.end(); ++cit) {
@@ -1347,11 +1421,18 @@ int main(int argc, char **argv) {
 
     std::size_t i = 0, curpipes;
     bool term = false;
+    int pret = -1;
+
+    print_dbg("turnstiled: init linger");
+    if (init_linger()) {
+        /* we have pipes to queue, skip the first poll */
+        goto do_compact;
+    }
 
     /* main loop */
     for (;;) {
         print_dbg("turnstiled: poll");
-        auto pret = poll(fds.data(), fds.size(), -1);
+        pret = poll(fds.data(), fds.size(), -1);
         if (pret < 0) {
             /* interrupted by signal */
             if (errno == EINTR) {

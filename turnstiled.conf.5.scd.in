@@ -63,7 +63,7 @@ accept more values.
 
 	Valid values are _yes_, _no_ and _maybe_.
 
-*rundir\_path* (string: _@RUN_PATH@/usr/%u_)
+*rundir\_path* (string: _@RUN_PATH@/user/%u_)
 	The value of _$XDG\_RUNTIME\_DIR_ that is exported into the user service
 	environment. Special values _%u_ (user ID), _%g_ (group ID) and _%%_
 	(the character '%') are allowed and substituted in the string. Set to

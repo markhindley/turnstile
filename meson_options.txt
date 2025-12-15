@@ -8,6 +8,11 @@ option('runit',
     description: 'Whether to install runit-related backend and data'
 )
 
+option('suss',
+    type: 'feature', value: 'disabled',
+    description: 'Whether to install suss-related backend and data'
+)
+
 option('default_backend',
     type: 'string', value: '',
     description: 'Override the default backend'

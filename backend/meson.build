@@ -38,3 +38,19 @@ if have_runit
         install_mode: 'rwxr-xr-x'
     )
 endif
+
+# suss backend
+
+if have_suss
+    install_data(
+        'suss',
+        install_dir: join_paths(get_option('libexecdir'), 'turnstile'),
+        install_mode: 'rwxr-xr-x'
+    )
+
+    install_data(
+        'suss.conf',
+        install_dir: join_paths(get_option('sysconfdir'), 'turnstile/backend'),
+        install_mode: 'rw-r--r--'
+    )
+endif

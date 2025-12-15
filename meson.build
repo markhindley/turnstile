@@ -24,6 +24,7 @@ scdoc_dep = dependency(
 
 have_dinit = get_option('dinit').enabled()
 have_runit = get_option('runit').enabled()
+have_suss = get_option('suss').enabled()
 
 conf_data = configuration_data()
 conf_data.set_quoted('RUN_PATH', get_option('rundir'))
@@ -132,6 +133,8 @@ if default_backend == ''
         default_backend = 'dinit'
     elif have_runit
         default_backend = 'runit'
+    elif have_suss
+        default_backend = 'suss'
     else
         default_backend = 'none'
     endif
@@ -179,6 +182,10 @@ if get_option('man')
         'src/pam_turnstile.8.scd',
         cscd,
     ]
+
+    if have_suss
+        man_files += 'backend/suss.8.scd'
+    endif
 
     foreach fobj: man_files
         filename = fs.name(fobj)

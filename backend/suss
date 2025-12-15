@@ -1,0 +1,66 @@
+#!/bin/sh
+#
+# Turnstile User Services control script
+#
+# $1 = run, ready, stop
+#
+
+case "$1" in
+    run) # $2 = fifo, $3 = srvdir, $4 = confdir
+	CONF=$4/${0##*/}.conf
+	[ -r "$CONF" ] && . "$CONF"
+
+	# Termination trap: kill session group
+	terminate_services() {
+	    # Ignore the signal we are about to send and don't run twice.
+	    trap '' EXIT TERM
+	    pkill -TERM -u "${USER}" -s 0 # Our processes in the session group
+	    sleep 5
+	    for PID in $(pgrep -u "${USER}" -s 0 | grep -wv $$); do # Still running?
+		kill -KILL "$PID" # The Big Hammer
+	    done
+	    exit 0 # All exited: success
+	}
+	trap "terminate_services" EXIT HUP TERM
+
+	# Restrict perms to user
+	umask 066
+
+	# Run user session service starts
+	# 1. Find all scripts
+	for DIR in $(IFS=:; echo ${USER_SESSION_PATH:=${HOME}/.user_session.d}); do
+	    [ -d "$DIR" ] || continue
+	    for SERVICE in "$DIR"/* ; do
+		X="$(echo "${SERVICE##*/}" | tr -d -- '-_+.[:alnum:]')"
+		[ -z "$X" ] || continue
+		[ -d "$SERVICE" ] && continue
+		echo "$SERVICE"
+	    done
+	done |
+	    # 2. Filter on first unique filenames
+	    awk -F'/' '{OFS="\t"; print $NF,$0}'  | sort -us -k1,1 | cut -f2 |
+	    # 3. Run if executable
+	    while read -r SERVICE; do
+		[ -x "$SERVICE" ] || continue
+		nohup "$SERVICE" >/dev/null 2>&1 </dev/null
+	    done
+
+	# Notify turnstiled with manager pid that session services
+	# are started and then wait until signalled.
+	printf '%d' $$ > "$2"
+	waitpid $$
+	;;
+
+    ready) # $2 = manager pid
+	: # Yes, nothing to do here.
+	;;
+
+    stop) # $2 = manager pid
+	# HUP the manager waitpid subprocess.
+	pkill -HUP -P "$2" waitpid
+	;;
+
+    *)
+	exit 1
+	;;
+esac
